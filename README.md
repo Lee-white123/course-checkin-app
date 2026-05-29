@@ -10,11 +10,13 @@
 
 ## 运行方式
 
+需要先安装 Node.js 22 或更高版本。
+
 在 Windows 上打开 PowerShell，进入项目目录：
 
 ```powershell
 cd D:\project\course-checkin-app
-python app.py
+node server.js
 ```
 
 看到下面这类提示后，在浏览器打开：

@@ -1,0 +1,14 @@
+{
+  "name": "course-checkin-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "课时消除管理系统本地原型",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
