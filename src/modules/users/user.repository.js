@@ -1,5 +1,13 @@
 const db = require("../../database/db");
 
+const BASE_SUBJECTS = [
+  ["语文", "启用", 1],
+  ["数学", "启用", 2],
+  ["英语", "启用", 3],
+  ["物理", "启用", 4],
+  ["化学", "启用", 5],
+];
+
 async function listTeachers() {
   return db.query(`
     SELECT
@@ -81,17 +89,31 @@ async function updateTeacherSubject(teacherId, subject) {
     .filter(Boolean);
 
   await db.withTransaction(async (trx) => {
+    await trx.execute(
+      `
+        INSERT INTO subjects(name, status, sort_order)
+        VALUES ${BASE_SUBJECTS.map(() => "(?, ?, ?)").join(", ")}
+        ON DUPLICATE KEY UPDATE
+          status = VALUES(status),
+          sort_order = VALUES(sort_order)
+      `,
+      BASE_SUBJECTS.flat()
+    );
     await trx.execute("DELETE FROM teacher_subjects WHERE teacher_id = ?", [teacherId]);
     if (!subjectNames.length) return;
 
     const placeholders = subjectNames.map(() => "?").join(", ");
-    await trx.execute(
+    const result = await trx.execute(
       `
         INSERT IGNORE INTO teacher_subjects(teacher_id, subject_id)
         SELECT ?, id FROM subjects WHERE name IN (${placeholders})
       `,
       [teacherId, ...subjectNames]
     );
+
+    if (Number(result.affectedRows || 0) !== subjectNames.length) {
+      throw new Error("教学科目保存异常，请检查 subjects 基础科目表是否完整");
+    }
   });
 }
 
