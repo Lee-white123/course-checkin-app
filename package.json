@@ -6,7 +6,13 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "check:mysql": "node -e \"require('./src/database').initDatabase().then(() => process.exit(0)).catch((error) => { console.error(error.message); process.exit(1); })\"",
+    "dev:web": "npm --prefix frontend run dev",
+    "build:web": "npm --prefix frontend run build"
+  },
+  "dependencies": {
+    "mysql2": "^3.11.5"
   },
   "engines": {
     "node": ">=22"
