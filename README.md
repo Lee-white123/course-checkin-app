@@ -122,3 +122,18 @@ src/utils/                通用工具
 cd D:\project\course-checkin-app\frontend
 npm run build
 ```
+
+## Docker 部署
+
+服务器部署推荐使用 Docker Compose：
+
+```bash
+cp deploy/production.env.example .env
+docker compose --env-file .env up -d --build
+```
+
+服务拆分为：
+
+- `mysql`：MySQL 8.0，首次启动自动执行 `mysql/schema.sql`
+- `backend`：Node.js 后端，内部端口 `8000`
+- `frontend`：Nginx 前端，公网端口 `80`

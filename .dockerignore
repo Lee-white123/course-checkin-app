@@ -1,0 +1,9 @@
+.git
+.idea
+.env
+.env.*
+node_modules
+frontend/node_modules
+static
+__pycache__
+npm-debug.log*
