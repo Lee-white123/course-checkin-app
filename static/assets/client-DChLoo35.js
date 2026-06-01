@@ -1,0 +1,1 @@
+import{g as s,c as i}from"./index-fcLrBSzc.js";async function p(n,a={}){const t=s(),e={"Content-Type":"application/json",...a.headers||{}};t!=null&&t.token&&(e.Authorization=`Bearer ${t.token}`);const o=await fetch(n,{...a,headers:e}),r=await o.json();if(!o.ok)throw o.status===401&&i(),new Error(r.error||"操作失败");return r}export{p as a};

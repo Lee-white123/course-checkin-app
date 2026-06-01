@@ -7,8 +7,15 @@ const { getInvalidPasswordChars, isValidPassword, isValidPhone, isValidUsername 
 const authRepository = require("./auth.repository");
 const captchaService = require("./captcha.service");
 
+const STUDENT_GRADES = ["小升初", "初一", "初二", "初三"];
+
 function buildLoginResult(role, user) {
-  const tokenResult = createToken({ sub: user.id, role, username: user.username });
+  const tokenResult = createToken({
+    sub: user.id,
+    role,
+    username: user.username,
+    token_version: Number(user.token_version || 1),
+  });
   return {
     token: tokenResult.token,
     expires_at: tokenResult.expires_at,
@@ -20,8 +27,40 @@ function buildLoginResult(role, user) {
   };
 }
 
+function buildUserPayload(role, record) {
+  if (role === "admin") {
+    return {
+      id: record.id,
+      username: record.username,
+      name: record.name,
+      is_super: record.username === "admin" ? 1 : Number(record.is_super || 0),
+      login_locked: Number(record.login_locked || 0),
+      must_change_password: Number(record.must_change_password || 0),
+      token_version: Number(record.token_version || 1),
+      role,
+    };
+  }
+
+  return {
+    id: record.id,
+    username: record.username,
+    name: record.name,
+    phone: record.phone,
+    related_id: record.related_id,
+    profile_status: record.profile_status,
+    login_locked: Number(record.login_locked || 0),
+    must_change_password: Number(record.must_change_password || 0),
+    token_version: Number(record.token_version || 1),
+    role,
+  };
+}
+
 function ensureActive(record) {
   return record && record.status !== "禁用";
+}
+
+function ensureProfileAvailable(record) {
+  return record && record.profile_status !== "禁用";
 }
 
 async function listAdmins() {
@@ -72,12 +111,7 @@ async function loginAdmin(input) {
   }
 
   await authRepository.resetAdminLoginFailures(admin.id);
-  return buildLoginResult("admin", {
-    id: admin.id,
-    username: admin.username,
-    name: admin.name,
-    is_super: admin.username === "admin" ? 1 : Number(admin.is_super || 0),
-  });
+  return buildLoginResult("admin", buildUserPayload("admin", admin));
 }
 
 async function loginAccount(role, input) {
@@ -91,6 +125,9 @@ async function loginAccount(role, input) {
   if (!ensureActive(account)) {
     throw new AppError("账号不存在，请先注册", 401);
   }
+  if (!ensureProfileAvailable(account)) {
+    throw new AppError("账号已停用，请联系管理员处理", 403);
+  }
   assertNotLoginLocked(account);
 
   if (!verifyPassword(password, account.password_salt, account.password_hash)) {
@@ -99,14 +136,7 @@ async function loginAccount(role, input) {
   }
 
   await authRepository.resetAccountLoginFailures(account.id);
-  return buildLoginResult(role, {
-    id: account.id,
-    username: account.username,
-    name: account.name,
-    phone: account.phone,
-    related_id: account.related_id,
-    profile_status: account.profile_status,
-  });
+  return buildLoginResult(role, buildUserPayload(role, account));
 }
 
 async function login(input) {
@@ -121,6 +151,12 @@ function assertSuperAdmin(operator) {
   const isMarkedSuperAdmin = operator?.role === "admin" && Number(operator?.is_super || 0) === 1;
   if (!isDefaultSuperAdmin && !isMarkedSuperAdmin) {
     throw new AppError("只有超级管理员可以操作管理员权限", 403);
+  }
+}
+
+function assertAdminOperator(operator, message = "只有管理员可以执行该操作") {
+  if (operator?.role !== "admin" || !operator?.username) {
+    throw new AppError(message, 403);
   }
 }
 
@@ -177,14 +213,8 @@ async function revokeAdmin(id, input) {
   };
 }
 
-function assertAdminOperator(operator) {
-  if (operator?.role !== "admin" || !operator?.username) {
-    throw new AppError("只有管理员可以解除登录限制", 403);
-  }
-}
-
 async function unlockLogin(input) {
-  assertAdminOperator(input.operator);
+  assertAdminOperator(input.operator, "只有管理员可以解除登录限制");
 
   const role = cleanText(input.role);
   const id = Number(input.id || 0);
@@ -194,6 +224,198 @@ async function unlockLogin(input) {
 
   await authRepository.unlockAccount(role, id);
   return { role, id };
+}
+
+async function logout(input) {
+  assertCurrentUser(input.operator);
+  await authRepository.invalidateSession(input.operator.role, Number(input.operator.sub));
+  return { ok: true };
+}
+
+function assertCurrentUser(operator) {
+  if (!operator?.role || !operator?.sub) {
+    throw new AppError("登录已过期，请重新登录", 401);
+  }
+}
+
+function assertName(value, label = "姓名") {
+  const name = cleanText(value);
+  if (!name) throw new AppError(`请填写${label}`, 400);
+  if (name.length > 32) throw new AppError(`${label}不能超过 32 个字符`, 400);
+  return name;
+}
+
+function assertProfilePhone(value) {
+  const phone = cleanText(value);
+  if (!phone) throw new AppError("请填写手机号", 400);
+  if (!isValidPhone(phone)) throw new AppError("请输入有效的 11 位中国大陆手机号", 400);
+  return phone;
+}
+
+function assertPasswordRules(password) {
+  if (!isValidPassword(password)) {
+    const invalidChars = getInvalidPasswordChars(password);
+    if (invalidChars.length) {
+      throw new AppError(`密码不符合，不能出现 ${invalidChars.join("、")}`, 400);
+    }
+    throw new AppError("密码需为 8-32 位，可使用英文、数字和符号 *_@，不能全部是符号", 400);
+  }
+}
+
+async function getCurrentRecord(operator) {
+  assertCurrentUser(operator);
+
+  if (operator.role === "admin") {
+    const admin = await authRepository.findAdminById(Number(operator.sub));
+    if (!ensureActive(admin)) throw new AppError("账号不存在或已停用", 404);
+    return admin;
+  }
+
+  if (operator.role === "teacher" || operator.role === "parent") {
+    const account = await authRepository.findAccountById(Number(operator.sub));
+    if (!ensureActive(account) || account.role !== operator.role) {
+      throw new AppError("账号不存在或已停用", 404);
+    }
+    return account;
+  }
+
+  throw new AppError("暂不支持该登录身份", 400);
+}
+
+async function updateProfile(input) {
+  const operator = input.operator;
+  const record = await getCurrentRecord(operator);
+
+  if (operator.role === "admin") {
+    const name = assertName(input.name, "管理员名称");
+    await authRepository.updateAdminProfile(record.id, { name });
+    const updated = await authRepository.findAdminById(record.id);
+    return buildUserPayload("admin", updated);
+  }
+
+  const nameLabel = operator.role === "teacher" ? "老师姓名" : "家长姓名";
+  const name = assertName(input.name, nameLabel);
+  const phone = assertProfilePhone(input.phone);
+
+  if (operator.role === "parent") {
+    const studentName = assertName(input.student_name, "学生姓名");
+    const studentGrade = cleanText(input.student_grade);
+    if (!STUDENT_GRADES.includes(studentGrade)) {
+      throw new AppError("学生年级只能选择小升初、初一、初二或初三", 400);
+    }
+    await authRepository.updateAccountProfile(record, { name, phone, student_name: studentName, student_grade: studentGrade });
+  } else {
+    await authRepository.updateAccountProfile(record, { name, phone });
+  }
+
+  const updated = await authRepository.findAccountById(record.id);
+  return buildUserPayload(operator.role, updated);
+}
+
+async function updatePassword(input) {
+  const operator = input.operator;
+  const record = await getCurrentRecord(operator);
+  const currentPassword = String(input.current_password || "");
+  const newPassword = String(input.new_password || "");
+  const confirmPassword = String(input.confirm_password || "");
+
+  if (!currentPassword || !newPassword || !confirmPassword) {
+    throw new AppError("请填写原密码、新密码和确认密码", 400);
+  }
+  if (!verifyPassword(currentPassword, record.password_salt, record.password_hash)) {
+    throw new AppError("原密码不正确，请重新输入", 400);
+  }
+  if (newPassword !== confirmPassword) {
+    throw new AppError("两次输入的新密码不一致", 400);
+  }
+  if (currentPassword === newPassword) {
+    throw new AppError("新密码不能和原密码相同", 400);
+  }
+
+  assertPasswordRules(newPassword);
+  const passwordData = {
+    ...hashPassword(newPassword),
+    must_change_password: 0,
+  };
+
+  await authRepository.updateLinkedPassword(record, operator.role, passwordData);
+
+  return { ok: true };
+}
+
+async function resetPassword(input) {
+  assertAdminOperator(input.operator);
+
+  const role = cleanText(input.role);
+  const id = Number(input.id || 0);
+  const newPassword = String(input.new_password || "");
+  const confirmPassword = String(input.confirm_password || "");
+
+  if (!["teacher", "parent"].includes(role) || !id) {
+    throw new AppError("请选择要重置密码的老师或家长账号", 400);
+  }
+  if (!newPassword || !confirmPassword) {
+    throw new AppError("请填写新密码和确认密码", 400);
+  }
+  if (newPassword !== confirmPassword) {
+    throw new AppError("两次输入的新密码不一致", 400);
+  }
+  assertPasswordRules(newPassword);
+
+  const account = await authRepository.findAccountById(id);
+  if (!ensureActive(account) || account.role !== role) {
+    throw new AppError("账号不存在或已停用", 404);
+  }
+
+  await authRepository.updateLinkedPassword(account, role, {
+    ...hashPassword(newPassword),
+    must_change_password: 1,
+  });
+  return {
+    role,
+    id,
+    username: account.username,
+  };
+}
+
+async function authorizeRequest(payload, requestKey) {
+  if (!payload?.role || !payload?.sub) {
+    throw new AppError("登录已过期，请重新登录", 401);
+  }
+
+  const authState = await authRepository.findAuthState(payload.role, Number(payload.sub));
+  if (!authState) {
+    throw new AppError("登录已过期，请重新登录", 401);
+  }
+  if (!ensureActive(authState) || !ensureProfileAvailable(authState)) {
+    throw new AppError("账号已停用，请重新登录或联系管理员", 403);
+  }
+  if (Number(authState.login_locked || 0) === 1) {
+    throw new AppError("账号已被限制登录，请联系管理员解除限制", 403);
+  }
+  if (Number(payload.token_version || 1) !== Number(authState.token_version || 1)) {
+    throw new AppError("账号会话已失效，请重新登录", 401);
+  }
+
+  const mustChangePassword = Number(authState.must_change_password || 0) === 1;
+  const passwordChangeAllowedRoutes = new Set([
+    "GET /api/bootstrap",
+    "PATCH /api/auth/password",
+    "POST /api/auth/logout",
+  ]);
+  if (mustChangePassword && !passwordChangeAllowedRoutes.has(requestKey)) {
+    throw new AppError("当前密码为管理员重置的临时密码，请先在“我的账户”修改密码", 403);
+  }
+
+  return {
+    ...payload,
+    username: authState.username || payload.username,
+    is_super: payload.role === "admin" ? Number(authState.is_super || 0) : 0,
+    related_id: Number(authState.related_id || 0),
+    profile_status: authState.profile_status,
+    must_change_password: Number(authState.must_change_password || 0),
+    token_version: Number(authState.token_version || 1),
+  };
 }
 
 async function register(input) {
@@ -280,11 +502,16 @@ async function register(input) {
 
 module.exports = {
   appointTeacherAsAdmin,
+  authorizeRequest,
   listAdmins,
   listParentAccounts,
   listTeacherAccounts,
   login,
+  logout,
   register,
+  resetPassword,
   revokeAdmin,
+  updatePassword,
+  updateProfile,
   unlockLogin,
 };

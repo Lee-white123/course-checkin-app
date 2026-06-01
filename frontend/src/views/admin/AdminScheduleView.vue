@@ -1,12 +1,34 @@
 <template>
   <section class="stack">
+    <div class="admin-module-hero">
+      <div>
+        <span>管理员端</span>
+        <h2>排课管理</h2>
+        <p>集中完成排课、冲突检查、课程查询和排课列表维护。</p>
+      </div>
+      <div class="admin-module-metrics">
+        <div>
+          <strong>{{ totalScheduleCount }}</strong>
+          <small>总排课</small>
+        </div>
+        <div>
+          <strong>{{ pendingScheduleCount }}</strong>
+          <small>待上课</small>
+        </div>
+        <div>
+          <strong>{{ completedScheduleCount }}</strong>
+          <small>已消课</small>
+        </div>
+      </div>
+    </div>
+
     <el-card shadow="never">
       <template #header>
         <strong>课程编排</strong>
       </template>
       <el-form :model="scheduleForm" label-position="top">
         <el-row :gutter="16">
-          <el-col :xs="24" :md="8">
+          <el-col :xs="8" :md="8">
             <el-form-item label="学生">
               <el-select v-model="scheduleForm.student_id" class="full" filterable placeholder="请选择学生">
                 <el-option v-for="item in state.students" :key="item.id" :label="item.name" :value="item.id" />
@@ -14,7 +36,7 @@
             </el-form-item>
           </el-col>
 
-          <el-col :xs="24" :md="8">
+          <el-col :xs="8" :md="8">
             <el-form-item label="学生年级">
               <el-select v-model="scheduleForm.student_grade" class="full" placeholder="请选择年级">
                 <el-option v-for="item in gradeOptions" :key="item" :label="item" :value="item" />
@@ -22,7 +44,7 @@
             </el-form-item>
           </el-col>
 
-          <el-col :xs="24" :md="8">
+          <el-col :xs="8" :md="8">
             <el-form-item label="课程类型">
               <el-select v-model="scheduleForm.course_category" class="full" placeholder="请选择课程类型">
                 <el-option v-for="item in courseTypeOptions" :key="item" :label="item" :value="item" />
@@ -30,7 +52,7 @@
             </el-form-item>
           </el-col>
 
-          <el-col :xs="24" :md="8">
+          <el-col :xs="8" :md="8">
             <el-form-item label="老师">
               <el-select v-model="scheduleForm.teacher_id" class="full" filterable placeholder="请选择老师">
                 <el-option
@@ -43,7 +65,7 @@
             </el-form-item>
           </el-col>
 
-          <el-col :xs="24" :md="8">
+          <el-col :xs="8" :md="8">
             <el-form-item label="科目">
               <el-select
                 v-model="scheduleForm.course_name"
@@ -56,38 +78,64 @@
             </el-form-item>
           </el-col>
 
-          <el-col :xs="24" :md="8">
+          <el-col :xs="8" :md="8">
             <el-form-item label="日期">
               <el-date-picker v-model="scheduleForm.planned_date" class="full" value-format="YYYY-MM-DD" />
             </el-form-item>
           </el-col>
 
-          <el-col :xs="24" :md="8">
+          <el-col :xs="8" :md="8">
             <el-form-item label="星期">
               <el-input v-model="scheduleForm.weekday" disabled placeholder="选择日期后自动生成" />
             </el-form-item>
           </el-col>
 
-          <el-col :xs="24" :md="8">
+          <el-col :xs="8" :md="8">
             <el-form-item label="开始时间">
-              <el-time-select v-model="scheduleForm.start_time" class="full" start="07:00" step="00:30" end="22:00" />
+              <el-time-select
+                v-model="scheduleForm.start_time"
+                class="full"
+                start="07:00"
+                step="00:30"
+                end="22:00"
+                @change="syncAutoLessonHours"
+              />
             </el-form-item>
           </el-col>
 
-          <el-col :xs="24" :md="8">
+          <el-col :xs="8" :md="8">
             <el-form-item label="结束时间">
-              <el-time-select v-model="scheduleForm.end_time" class="full" start="07:00" step="00:30" end="22:00" />
+              <el-time-select
+                v-model="scheduleForm.end_time"
+                class="full"
+                start="07:00"
+                step="00:30"
+                end="22:00"
+                :min-time="scheduleForm.start_time"
+                @change="syncAutoLessonHours"
+              />
             </el-form-item>
           </el-col>
 
-          <el-col :xs="24" :md="8">
-            <el-form-item label="自动课时">
-              <el-input :model-value="`${formatHours(scheduleForm.lesson_hours)} 小时`" disabled />
+          <el-col :xs="8" :md="8">
+            <el-form-item label="课时（自动计算，可修改）">
+              <el-input-number
+                v-model="scheduleForm.lesson_hours"
+                class="full"
+                :min="0"
+                :step="0.5"
+                :precision="1"
+                controls-position="right"
+                placeholder="自动计算，可手动修改"
+              />
             </el-form-item>
           </el-col>
         </el-row>
 
-        <el-button type="primary" @click="submitSchedule">添加排课</el-button>
+        <div class="form-actions">
+          <el-button type="primary" @click="submitSchedule">添加排课</el-button>
+          <el-button @click="resetSchedule">清空表单</el-button>
+        </div>
       </el-form>
     </el-card>
 
@@ -100,7 +148,7 @@
       </template>
       <el-form :model="scheduleFilters" label-position="top">
         <el-row :gutter="16">
-          <el-col :xs="24" :md="8">
+          <el-col :xs="8" :md="8">
             <el-form-item label="按老师查看">
               <el-select
                 v-model="scheduleFilters.teacher_id"
@@ -119,7 +167,7 @@
             </el-form-item>
           </el-col>
 
-          <el-col :xs="24" :md="8">
+          <el-col :xs="8" :md="8">
             <el-form-item label="按学生查看">
               <el-select
                 v-model="scheduleFilters.student_id"
@@ -133,10 +181,23 @@
             </el-form-item>
           </el-col>
 
-          <el-col :xs="24" :md="8">
+          <el-col :xs="8" :md="8">
+            <el-form-item label="按状态查看">
+              <el-select
+                v-model="scheduleFilters.status"
+                class="full"
+                clearable
+                placeholder="全部状态"
+              >
+                <el-option v-for="item in statusOptions" :key="item" :label="item" :value="item" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+
+          <el-col :xs="8" :md="8">
             <el-form-item label="查询结果">
               <div class="filter-summary">
-                排课列表 {{ filteredSchedules.length }} 条，当前周课程表 {{ filteredWeekScheduleCount }} 节
+                排课列表 {{ filteredSchedules.length }} 条
               </div>
             </el-form-item>
           </el-col>
@@ -144,13 +205,18 @@
       </el-form>
     </el-card>
 
-    <WeeklyTimetable :schedules="filteredSchedules" title="周课程表" />
-
     <el-card shadow="never">
       <template #header>
         <strong>排课列表</strong>
       </template>
-      <el-table :data="pagedSchedules" empty-text="暂无符合条件的排课" stripe>
+      <el-table
+        ref="scheduleTableRef"
+        class="paginated-table"
+        :data="pagedSchedules"
+        empty-text="暂无符合条件的排课"
+        stripe
+        :style="{ '--table-visible-rows': schedulePageSize }"
+      >
         <el-table-column prop="student_name" label="学生" min-width="100" />
         <el-table-column prop="student_grade" label="年级" min-width="90" />
         <el-table-column prop="course_name" label="科目" min-width="120" />
@@ -178,31 +244,30 @@
       </el-table>
 
       <div class="pagination-bar">
-        <div v-if="filteredSchedules.length > schedulePageSize" class="compact-pagination">
-          <el-button :disabled="schedulePage <= 1" @click="changeSchedulePage(-1)">上一页</el-button>
-          <el-input-number
-            v-model="schedulePage"
-            class="page-input"
-            :controls="false"
-            :min="1"
-            :max="scheduleTotalPages"
-            @change="normalizeSchedulePage"
-          />
-          <span class="page-total">/ {{ scheduleTotalPages }}</span>
-          <el-button :disabled="schedulePage >= scheduleTotalPages" @click="changeSchedulePage(1)">下一页</el-button>
-        </div>
+        <CompactPagination
+          v-model="schedulePage"
+          :total="filteredSchedules.length"
+          :page-size="schedulePageSize"
+        />
       </div>
     </el-card>
   </section>
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from "vue";
+import { computed, nextTick, reactive, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../../api/client";
+import CompactPagination from "../../components/CompactPagination.vue";
 import StatusTag from "../../components/StatusTag.vue";
-import WeeklyTimetable from "../../components/WeeklyTimetable.vue";
-import { formatHours, formatScheduleTime } from "../../utils/format";
+import { formatHours } from "../../utils/format";
+import {
+  calculateLessonHours,
+  formatScheduleTimeText,
+  timeToMinutes,
+  weekdayFromValue,
+} from "../../utils/schedule-time";
 
 const props = defineProps({
   state: {
@@ -212,11 +277,14 @@ const props = defineProps({
 });
 
 const emit = defineEmits(["state-updated"]);
+const route = useRoute();
+const router = useRouter();
 const gradeOptions = ["初一", "初二", "初三"];
 const courseTypeOptions = ["一对一", "小班课"];
-const weekNames = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+const statusOptions = ["待上课", "未打卡", "已消课", "异常"];
 const schedulePageSize = 10;
-const schedulePage = ref(1);
+const schedulePage = ref(toPositivePage(route.query.page));
+const scheduleTableRef = ref(null);
 
 const scheduleForm = reactive({
   student_id: "",
@@ -232,8 +300,9 @@ const scheduleForm = reactive({
 });
 
 const scheduleFilters = reactive({
-  teacher_id: "",
-  student_id: "",
+  teacher_id: queryId(route.query.teacher),
+  student_id: queryId(route.query.student),
+  status: statusValue(route.query.status),
 });
 
 const selectedStudent = computed(() =>
@@ -252,7 +321,10 @@ const subjectOptions = computed(() => {
     .filter(Boolean);
 });
 
-const hasScheduleFilters = computed(() => Boolean(scheduleFilters.teacher_id || scheduleFilters.student_id));
+const hasScheduleFilters = computed(() => Boolean(scheduleFilters.teacher_id || scheduleFilters.student_id || scheduleFilters.status));
+const totalScheduleCount = computed(() => (props.state.schedules || []).length);
+const pendingScheduleCount = computed(() => (props.state.schedules || []).filter((item) => item.status === "待上课").length);
+const completedScheduleCount = computed(() => (props.state.schedules || []).filter((item) => item.status === "已消课").length);
 
 const filteredSchedules = computed(() =>
   (props.state.schedules || []).filter((item) => {
@@ -260,11 +332,11 @@ const filteredSchedules = computed(() =>
       !scheduleFilters.teacher_id || Number(item.teacher_id) === Number(scheduleFilters.teacher_id);
     const studentMatched =
       !scheduleFilters.student_id || Number(item.student_id) === Number(scheduleFilters.student_id);
-    return teacherMatched && studentMatched;
+    const statusMatched = !scheduleFilters.status || item.status === scheduleFilters.status;
+    return teacherMatched && studentMatched && statusMatched;
   })
 );
 
-const filteredWeekScheduleCount = computed(() => countSchedulesInCurrentWeek(filteredSchedules.value));
 const scheduleTotalPages = computed(() => Math.max(1, Math.ceil(filteredSchedules.value.length / schedulePageSize)));
 const pagedSchedules = computed(() => {
   const start = (schedulePage.value - 1) * schedulePageSize;
@@ -272,11 +344,19 @@ const pagedSchedules = computed(() => {
 });
 
 watch(
-  () => [scheduleFilters.teacher_id, scheduleFilters.student_id, scheduleTotalPages.value],
+  () => [scheduleFilters.teacher_id, scheduleFilters.student_id, scheduleFilters.status, scheduleTotalPages.value],
   () => {
     normalizeSchedulePage();
+    syncScheduleQuery();
   }
 );
+
+watch(schedulePage, () => {
+  normalizeSchedulePage();
+  syncScheduleQuery();
+});
+
+watch([schedulePage, pagedSchedules], refreshScheduleTableLayout, { flush: "post" });
 
 watch(
   () => scheduleForm.student_id,
@@ -301,35 +381,48 @@ watch(
   }
 );
 
+async function refreshScheduleTableLayout() {
+  await nextTick();
+  scheduleTableRef.value?.doLayout?.();
+}
+
 watch(
   () => [scheduleForm.start_time, scheduleForm.end_time],
-  () => {
-    scheduleForm.lesson_hours = calculateLessonHours(scheduleForm.start_time, scheduleForm.end_time);
-  },
+  syncAutoLessonHours,
   { immediate: true }
 );
+
+function syncAutoLessonHours() {
+  const start = timeToMinutes(scheduleForm.start_time, null);
+  const end = timeToMinutes(scheduleForm.end_time, null);
+  if (start !== null && end !== null && end < start) {
+    scheduleForm.end_time = "";
+    scheduleForm.lesson_hours = 0;
+    ElMessage.warning("结束时间不能早于开始时间，请重新选择结束时间");
+    return;
+  }
+  scheduleForm.lesson_hours = calculateLessonHours(scheduleForm.start_time, scheduleForm.end_time);
+}
 
 function categoryLabel(row) {
   return row.course_category || "未设置";
 }
 
 function timeLabel(row) {
-  return formatScheduleTime({
+  return formatScheduleTimeText({
     ...row,
     weekday: row.weekday || getWeekday(row.planned_date) || "",
   });
 }
 
 function getWeekday(dateText) {
-  if (!dateText) return "";
-  const date = parseDate(dateText);
-  if (Number.isNaN(date.getTime())) return "";
-  return weekNames[date.getDay()];
+  return weekdayFromValue(dateText);
 }
 
 function resetScheduleFilters() {
   scheduleFilters.teacher_id = "";
   scheduleFilters.student_id = "";
+  scheduleFilters.status = "";
   schedulePage.value = 1;
 }
 
@@ -338,41 +431,34 @@ function normalizeSchedulePage() {
   schedulePage.value = Math.min(Math.max(Math.trunc(value), 1), scheduleTotalPages.value);
 }
 
-function changeSchedulePage(delta) {
-  schedulePage.value += delta;
-  normalizeSchedulePage();
+function queryId(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : "";
 }
 
-function calculateLessonHours(startTime, endTime) {
-  const start = timeToMinutes(startTime);
-  const end = timeToMinutes(endTime);
-  if (start === null || end === null) return 1;
-  if (end <= start) return 0.5;
-  return Math.max(0.5, Math.round(((end - start) / 60) * 2) / 2);
+function statusValue(value) {
+  return statusOptions.includes(value) ? value : "";
 }
 
-function timeToMinutes(value) {
-  const [hour, minute] = String(value || "").split(":").map(Number);
-  if (Number.isNaN(hour) || Number.isNaN(minute)) return null;
-  return hour * 60 + minute;
+function toPositivePage(value) {
+  const number = Math.trunc(Number(value || 1));
+  return Number.isFinite(number) && number > 0 ? number : 1;
 }
 
-function parseDate(value) {
-  return new Date(`${value}T00:00:00`);
+function syncScheduleQuery() {
+  router.replace({
+    query: cleanQuery({
+      ...route.query,
+      teacher: scheduleFilters.teacher_id || undefined,
+      student: scheduleFilters.student_id || undefined,
+      status: scheduleFilters.status || undefined,
+      page: schedulePage.value > 1 ? schedulePage.value : undefined,
+    }),
+  });
 }
 
-function countSchedulesInCurrentWeek(schedules) {
-  const today = new Date();
-  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const day = start.getDay() || 7;
-  start.setDate(start.getDate() - day + 1);
-  const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6);
-
-  return schedules.filter((item) => {
-    if (!item.planned_date) return false;
-    const plannedDate = parseDate(item.planned_date);
-    return plannedDate >= start && plannedDate <= end;
-  }).length;
+function cleanQuery(query) {
+  return Object.fromEntries(Object.entries(query).filter(([, value]) => value !== undefined && value !== ""));
 }
 
 function resetSchedule() {
@@ -407,16 +493,38 @@ async function submitSchedule() {
     ElMessage.warning("请选择学生年级");
     return;
   }
+  if (!scheduleForm.start_time || !scheduleForm.end_time) {
+    ElMessage.warning("请选择开始时间和结束时间");
+    return;
+  }
+  if (timeToMinutes(scheduleForm.end_time) < timeToMinutes(scheduleForm.start_time)) {
+    ElMessage.warning("结束时间不能早于开始时间");
+    return;
+  }
+  if (!Number.isFinite(Number(scheduleForm.lesson_hours)) || Number(scheduleForm.lesson_hours) < 0) {
+    ElMessage.warning("课时不能小于 0");
+    return;
+  }
 
   try {
     const payload = await api("/api/schedules", {
       method: "POST",
-      body: JSON.stringify(scheduleForm),
+      body: JSON.stringify({
+        ...scheduleForm,
+        lesson_hours: Number(scheduleForm.lesson_hours),
+      }),
     });
     emit("state-updated", payload);
-    resetSchedule();
-    ElMessage.success("已添加排课");
+    ElMessage.success("已添加排课，已保留本次填写内容");
   } catch (error) {
+    if (String(error.message || "").includes("排课时间冲突")) {
+      ElMessageBox.alert(error.message, "排课时间冲突", {
+        type: "warning",
+        confirmButtonText: "我知道了",
+        customClass: "schedule-conflict-dialog",
+      });
+      return;
+    }
     ElMessage.error(error.message);
   }
 }
@@ -444,18 +552,67 @@ async function removeSchedule(row) {
   margin-top: 14px;
 }
 
-.compact-pagination {
+.form-actions {
   display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.admin-module-hero {
   align-items: center;
-  gap: 8px;
+  background: linear-gradient(135deg, var(--surface) 0%, var(--primary-soft) 100%);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  padding: 22px 24px;
 }
 
-.page-input {
-  width: 72px;
+.admin-module-hero span {
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 700;
 }
 
-.page-total {
-  min-width: 36px;
-  color: #475569;
+.admin-module-hero h2 {
+  font-size: 24px;
+  margin: 8px 0;
+}
+
+.admin-module-hero p {
+  color: var(--muted);
+  margin: 0;
+}
+
+.admin-module-metrics {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(86px, 1fr));
+}
+
+.admin-module-metrics div {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  display: grid;
+  gap: 5px;
+  justify-items: center;
+  padding: 12px;
+}
+
+.admin-module-metrics strong {
+  font-size: 24px;
+}
+
+.admin-module-metrics small {
+  color: var(--muted);
+}
+
+@media (max-width: 760px) {
+  .admin-module-hero {
+    align-items: center;
+    flex-direction: row;
+  }
 }
 </style>

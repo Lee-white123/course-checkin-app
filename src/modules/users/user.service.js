@@ -28,6 +28,7 @@ async function listUsers() {
 }
 
 async function createTeacher(input) {
+  assertAdminOperator(input.operator, "只有管理员可以新增老师信息");
   const subjects = normalizeSubjects(input.subject);
   const teacherId = await userRepository.createTeacher({
     name: cleanText(input.name),
@@ -42,6 +43,7 @@ async function createTeacher(input) {
 }
 
 async function createStudent(input) {
+  assertAdminOperator(input.operator, "只有管理员可以新增学生信息");
   await userRepository.createStudent({
     name: cleanText(input.name),
     grade: cleanText(input.grade),
@@ -53,17 +55,19 @@ async function createStudent(input) {
   });
 }
 
-async function deleteTeacher(id) {
-  await userRepository.deleteTeacher(Number(id));
+async function deleteTeacher(input) {
+  assertAdminOperator(input.operator, "只有管理员可以注销老师信息");
+  await userRepository.deleteTeacher(Number(input.id));
 }
 
-async function deleteStudent(id) {
-  await userRepository.deleteStudent(Number(id));
+async function deleteStudent(input) {
+  assertAdminOperator(input.operator, "只有管理员可以注销学生信息");
+  await userRepository.deleteStudent(Number(input.id));
 }
 
-function assertAdminOperator(operator) {
+function assertAdminOperator(operator, message = "只有管理员可以执行该操作") {
   if (operator?.role !== "admin" || !operator?.username) {
-    throw new AppError("只有管理员可以任命教学科目", 403);
+    throw new AppError(message, 403);
   }
 }
 

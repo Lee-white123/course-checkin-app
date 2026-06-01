@@ -1,3 +1,6 @@
+SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
+SET CHARACTER SET utf8mb4;
+
 CREATE DATABASE IF NOT EXISTS course_checkin
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
@@ -14,6 +17,8 @@ CREATE TABLE IF NOT EXISTS admins (
   status VARCHAR(20) NOT NULL DEFAULT '启用',
   failed_login_count INT NOT NULL DEFAULT 0,
   login_locked TINYINT NOT NULL DEFAULT 0,
+  must_change_password TINYINT NOT NULL DEFAULT 0,
+  token_version INT NOT NULL DEFAULT 1,
   created_at DATETIME NOT NULL,
   PRIMARY KEY (id),
   UNIQUE KEY uk_admins_username (username),
@@ -32,6 +37,8 @@ CREATE TABLE IF NOT EXISTS accounts (
   status VARCHAR(20) NOT NULL DEFAULT '启用',
   failed_login_count INT NOT NULL DEFAULT 0,
   login_locked TINYINT NOT NULL DEFAULT 0,
+  must_change_password TINYINT NOT NULL DEFAULT 0,
+  token_version INT NOT NULL DEFAULT 1,
   created_at DATETIME NOT NULL,
   PRIMARY KEY (id),
   UNIQUE KEY uk_accounts_username (username),
@@ -182,6 +189,8 @@ INSERT INTO admins(
   status,
   failed_login_count,
   login_locked,
+  must_change_password,
+  token_version,
   created_at
 )
 VALUES (
@@ -193,6 +202,8 @@ VALUES (
   '启用',
   0,
   0,
+  0,
+  1,
   NOW()
 )
 ON DUPLICATE KEY UPDATE

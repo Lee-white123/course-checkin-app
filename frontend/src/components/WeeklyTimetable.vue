@@ -65,6 +65,18 @@
 <script setup>
 import { computed, ref } from "vue";
 import { formatHours, formatTimeRange } from "../utils/format";
+import {
+  addDays,
+  dateKey,
+  formatDate,
+  formatSlashDate,
+  getMonday,
+  getWeekDays,
+  parseDate,
+  timeRangeToGrid,
+  timeToMinutes,
+  weekdayFromValue,
+} from "../utils/schedule-time";
 
 const props = defineProps({
   schedules: {
@@ -77,13 +89,13 @@ const props = defineProps({
   },
 });
 
-const weekNames = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
 const timePeriods = [
   { label: "08:00-10:00", row: "1 / 5" },
   { label: "10:00-12:00", row: "5 / 9" },
-  { label: "14:00-16:00", row: "10 / 14" },
-  { label: "16:00-18:00", row: "14 / 18" },
-  { label: "18:00-20:00", row: "18 / 22" },
+  { label: "12:00-14:00", row: "9 / 13" },
+  { label: "14:00-16:00", row: "13 / 17" },
+  { label: "16:00-18:00", row: "17 / 21" },
+  { label: "18:00-20:00", row: "21 / 25" },
 ];
 
 const today = new Date();
@@ -102,17 +114,7 @@ const eventPalettes = [
   { bg: "#fff7d9", border: "#e9c24a", accent: "#b98300", text: "#5a4108", doneBg: "#ffefad", doneBorder: "#d7a916", doneAccent: "#946500", doneText: "#553900" },
 ];
 
-const weekDays = computed(() => {
-  const start = parseDate(currentWeekStart.value);
-  return Array.from({ length: 7 }, (_, index) => {
-    const date = addDays(start, index);
-    return {
-      date: formatDate(date),
-      weekday: weekNames[date.getDay()],
-      shortDate: `${date.getMonth() + 1}/${date.getDate()}`,
-    };
-  });
-});
+const weekDays = computed(() => getWeekDays(currentWeekStart.value));
 
 const weekRangeLabel = computed(() => {
   const start = parseDate(currentWeekStart.value);
@@ -123,10 +125,11 @@ const weekRangeLabel = computed(() => {
 const scheduleItemsByDate = computed(() => {
   const grouped = Object.fromEntries(weekDays.value.map((day) => [day.date, []]));
   for (const item of props.schedules || []) {
-    if (!item.planned_date || !grouped[item.planned_date]) continue;
+    const plannedDate = dateKey(item.planned_date);
+    if (!plannedDate || !grouped[plannedDate]) continue;
     const range = timeRangeToGrid(item.start_time, item.end_time);
     if (!range) continue;
-    grouped[item.planned_date].push({ ...item, ...range });
+    grouped[plannedDate].push({ ...item, planned_date: plannedDate, ...range });
   }
 
   for (const day of weekDays.value) {
@@ -153,22 +156,8 @@ function eventTitle(item) {
 }
 
 function detailDateLabel(item) {
-  const weekday = item.weekday || weekdayFromDate(item.planned_date);
+  const weekday = item.weekday || weekdayFromValue(item.planned_date);
   return `${item.planned_date || "未设置日期"} ${weekday}`.trim();
-}
-
-function weekdayFromDate(value) {
-  if (!value) return "";
-  const date = parseDate(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return weekNames[date.getDay()];
-}
-
-function getMonday(date) {
-  const result = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const day = result.getDay() || 7;
-  result.setDate(result.getDate() - day + 1);
-  return result;
 }
 
 function changeWeek(offset) {
@@ -177,38 +166,6 @@ function changeWeek(offset) {
 
 function goCurrentWeek() {
   currentWeekStart.value = formatDate(getMonday(new Date()));
-}
-
-function timeRangeToGrid(startTime, endTime) {
-  const start = timeToMinutes(startTime);
-  const end = timeToMinutes(endTime);
-  if (start === null || end === null || end <= start) return null;
-
-  const visibleStart = Math.max(start, 8 * 60);
-  const visibleEnd = Math.min(end, 20 * 60);
-  const isMorning = visibleStart < 12 * 60;
-  const isAfternoon = visibleEnd > 14 * 60;
-  if (!isMorning && !isAfternoon) return null;
-  if (visibleStart < 12 * 60 && visibleEnd > 12 * 60) return null;
-  if (visibleStart < 14 * 60 && visibleEnd > 12 * 60) return null;
-
-  return {
-    startRow: minuteToGridLine(visibleStart),
-    endRow: Math.max(minuteToGridLine(visibleEnd), minuteToGridLine(visibleStart) + 1),
-  };
-}
-
-function minuteToGridLine(minutes) {
-  if (minutes <= 12 * 60) {
-    return Math.floor((minutes - 8 * 60) / 30) + 1;
-  }
-  return Math.floor((minutes - 14 * 60) / 30) + 10;
-}
-
-function timeToMinutes(value) {
-  const [hour, minute] = String(value || "").split(":").map(Number);
-  if (Number.isNaN(hour) || Number.isNaN(minute)) return null;
-  return hour * 60 + minute;
 }
 
 function applyOverlapLayers(items) {
@@ -225,8 +182,8 @@ function applyOverlapLayers(items) {
 }
 
 function isTimeOverlapped(a, b) {
-  return timeToMinutes(a.start_time) < timeToMinutes(b.end_time) &&
-    timeToMinutes(a.end_time) > timeToMinutes(b.start_time);
+  return timeToMinutes(a.start_time, 0) < timeToMinutes(b.end_time, 0) &&
+    timeToMinutes(a.end_time, 0) > timeToMinutes(b.start_time, 0);
 }
 
 function paletteFor(item) {
@@ -240,27 +197,6 @@ function hashText(value) {
     hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
   }
   return hash;
-}
-
-function parseDate(value) {
-  return new Date(`${value}T00:00:00`);
-}
-
-function addDays(date, days) {
-  const result = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  result.setDate(result.getDate() + days);
-  return result;
-}
-
-function formatDate(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function formatSlashDate(date) {
-  return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
 }
 
 function eventStyle(item) {

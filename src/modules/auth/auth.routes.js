@@ -27,18 +27,38 @@ async function handleAuthRoutes(req, res, url) {
     return sendJson(res, await authService.register(await readJson(req)), 201);
   }
 
+  if (req.method === "PATCH" && url.pathname === "/api/auth/profile") {
+    const user = await authService.updateProfile({ ...(await readJson(req)), operator: req.auth });
+    return sendJson(res, { user });
+  }
+
+  if (req.method === "PATCH" && url.pathname === "/api/auth/password") {
+    const result = await authService.updatePassword({ ...(await readJson(req)), operator: req.auth });
+    return sendJson(res, result);
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/auth/reset-password") {
+    const result = await authService.resetPassword({ ...(await readJson(req)), operator: req.auth });
+    return sendJson(res, { result });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/auth/logout") {
+    const result = await authService.logout({ operator: req.auth });
+    return sendJson(res, result);
+  }
+
   if (req.method === "POST" && url.pathname === "/api/admins") {
-    const admin = await authService.appointTeacherAsAdmin(await readJson(req));
+    const admin = await authService.appointTeacherAsAdmin({ ...(await readJson(req)), operator: req.auth });
     return sendJson(res, { admin }, 201);
   }
 
   if (req.method === "DELETE" && url.pathname === "/api/admins") {
-    const admin = await authService.revokeAdmin(url.searchParams.get("id"), await readJson(req));
+    const admin = await authService.revokeAdmin(url.searchParams.get("id"), { ...(await readJson(req)), operator: req.auth });
     return sendJson(res, { admin });
   }
 
   if (req.method === "POST" && url.pathname === "/api/auth/unlock") {
-    const result = await authService.unlockLogin(await readJson(req));
+    const result = await authService.unlockLogin({ ...(await readJson(req)), operator: req.auth });
     return sendJson(res, { result });
   }
 

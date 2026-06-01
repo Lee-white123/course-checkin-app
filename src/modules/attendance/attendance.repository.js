@@ -7,6 +7,7 @@ async function listLessonRecords() {
       st.name AS student_name,
       t.name AS teacher_name,
       c.name AS course_name,
+      c.category AS course_category,
       s.weekday,
       s.start_time,
       s.end_time

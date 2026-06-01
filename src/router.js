@@ -1,6 +1,7 @@
 const { URL } = require("node:url");
 const { notFound, sendJson } = require("./utils/http");
 const bootstrapService = require("./services/bootstrap.service");
+const authService = require("./modules/auth/auth.service");
 const { handleAuthRoutes } = require("./modules/auth/auth.routes");
 const { handleUserRoutes } = require("./modules/users/user.routes");
 const { handleCourseRoutes } = require("./modules/courses/course.routes");
@@ -16,17 +17,18 @@ const publicApiRoutes = new Set([
 
 async function handleApi(req, res, url) {
   try {
+    const requestKey = `${req.method} ${url.pathname}`;
     if (!publicApiRoutes.has(`${req.method} ${url.pathname}`)) {
       const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
       const auth = verifyToken(token);
       if (!auth) {
         return sendJson(res, { error: "登录已过期，请重新登录" }, 401);
       }
-      req.auth = auth;
+      req.auth = await authService.authorizeRequest(auth, requestKey);
     }
 
     if (req.method === "GET" && url.pathname === "/api/bootstrap") {
-      return sendJson(res, await bootstrapService.fetchBootstrap());
+      return sendJson(res, await bootstrapService.fetchBootstrap(req.auth));
     }
 
     if (await handleAuthRoutes(req, res, url)) return;

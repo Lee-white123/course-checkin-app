@@ -8,6 +8,8 @@ async function listSchedules() {
   return db.query(`
     SELECT
       s.*,
+      lr.lesson_hours AS actual_lesson_hours,
+      lr.checked_at AS record_checked_at,
       st.name AS student_name,
       st.grade AS student_grade,
       st.parent_name,
@@ -25,6 +27,11 @@ async function listSchedules() {
     JOIN students st ON st.id = s.student_id
     JOIN teachers t ON t.id = s.teacher_id
     JOIN courses c ON c.id = s.course_id
+    LEFT JOIN lesson_records lr ON lr.id = (
+      SELECT MAX(inner_lr.id)
+      FROM lesson_records inner_lr
+      WHERE inner_lr.schedule_id = s.id
+    )
     ORDER BY
       CASE s.status WHEN '待上课' THEN 0 ELSE 1 END,
       s.id DESC
@@ -95,13 +102,9 @@ async function createSchedule(data) {
   );
 }
 
-async function markScheduleChecked(id, checkedAt, lessonHours, trx) {
+async function markScheduleChecked(id, checkedAt, checkinStatus, trx) {
   const executor = trx || db;
-  await executor.execute("UPDATE schedules SET status = '已消课', checked_at = ?, lesson_hours = ? WHERE id = ?", [
-    checkedAt,
-    lessonHours,
-    id,
-  ]);
+  await executor.execute("UPDATE schedules SET status = ?, checked_at = ? WHERE id = ?", [checkinStatus.status, checkedAt, id]);
 }
 
 async function deleteCourse(id) {

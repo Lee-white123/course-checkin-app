@@ -34,7 +34,7 @@ export function getRoleHome(auth) {
   const role = auth?.role || auth?.user?.role;
   const name = auth?.user?.username || auth?.user?.name || "user";
 
-  if (role === "teacher") return `/teacher/${encodeURIComponent(name)}`;
-  if (role === "parent") return `/parent/${encodeURIComponent(name)}`;
+  if (role === "teacher") return `/teacher/${encodeURIComponent(name)}/overview`;
+  if (role === "parent") return `/parent/${encodeURIComponent(name)}/overview`;
   return "/admin/overview";
 }

@@ -1,0 +1,1 @@
+function o(r){if(!r)return"";const t=String(r).trim(),n=t.match(/^(\d{1,2}):(\d{2})/);return n?`${n[1].padStart(2,"0")}:${n[2]}`:t}function i(r){const t=Number(r||0);return Number.isNaN(t)?"0.0":t.toFixed(1)}function u(r,t){const n=o(r),e=o(t);return!n&&!e?"":`${n}-${e}`}export{u as a,i as f};

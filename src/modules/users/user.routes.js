@@ -4,33 +4,33 @@ const userService = require("./user.service");
 
 async function handleUserRoutes(req, res, url) {
   if (req.method === "POST" && url.pathname === "/api/teachers") {
-    await userService.createTeacher(await readJson(req));
-    return sendJson(res, await bootstrapService.fetchBootstrap(), 201);
+    await userService.createTeacher({ ...(await readJson(req)), operator: req.auth });
+    return sendJson(res, await bootstrapService.fetchBootstrap(req.auth), 201);
   }
 
   if (req.method === "POST" && url.pathname === "/api/students") {
-    await userService.createStudent(await readJson(req));
-    return sendJson(res, await bootstrapService.fetchBootstrap(), 201);
+    await userService.createStudent({ ...(await readJson(req)), operator: req.auth });
+    return sendJson(res, await bootstrapService.fetchBootstrap(req.auth), 201);
   }
 
   if (req.method === "PUT" && url.pathname === "/api/teachers/subjects") {
-    await userService.updateTeacherSubjects(await readJson(req));
-    return sendJson(res, await bootstrapService.fetchBootstrap());
+    await userService.updateTeacherSubjects({ ...(await readJson(req)), operator: req.auth });
+    return sendJson(res, await bootstrapService.fetchBootstrap(req.auth));
   }
 
   if (req.method === "PUT" && url.pathname === "/api/teachers/status") {
-    await userService.updateTeacherStatus(await readJson(req));
-    return sendJson(res, await bootstrapService.fetchBootstrap());
+    await userService.updateTeacherStatus({ ...(await readJson(req)), operator: req.auth });
+    return sendJson(res, await bootstrapService.fetchBootstrap(req.auth));
   }
 
   if (req.method === "DELETE" && url.pathname === "/api/teachers") {
-    await userService.deleteTeacher(url.searchParams.get("id"));
-    return sendJson(res, await bootstrapService.fetchBootstrap());
+    await userService.deleteTeacher({ id: url.searchParams.get("id"), operator: req.auth });
+    return sendJson(res, await bootstrapService.fetchBootstrap(req.auth));
   }
 
   if (req.method === "DELETE" && url.pathname === "/api/students") {
-    await userService.deleteStudent(url.searchParams.get("id"));
-    return sendJson(res, await bootstrapService.fetchBootstrap());
+    await userService.deleteStudent({ id: url.searchParams.get("id"), operator: req.auth });
+    return sendJson(res, await bootstrapService.fetchBootstrap(req.auth));
   }
 
   return false;

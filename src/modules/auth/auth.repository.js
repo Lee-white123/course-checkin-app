@@ -5,7 +5,21 @@ function getExecutor(trx) {
 }
 
 async function listAdmins() {
-  return db.query("SELECT id, username, name, status, is_super, failed_login_count, login_locked, created_at FROM admins ORDER BY id DESC");
+  return db.query(`
+    SELECT
+      id,
+      username,
+      name,
+      status,
+      is_super,
+      failed_login_count,
+      login_locked,
+      must_change_password,
+      token_version,
+      created_at
+    FROM admins
+    ORDER BY id DESC
+  `);
 }
 
 async function listTeacherAccounts() {
@@ -19,6 +33,8 @@ async function listTeacherAccounts() {
       t.status AS teacher_status,
       a.failed_login_count,
       a.login_locked,
+      a.must_change_password,
+      a.token_version,
       COALESCE((
         SELECT GROUP_CONCAT(s.name ORDER BY s.sort_order SEPARATOR '、')
         FROM teacher_subjects ts
@@ -44,6 +60,8 @@ async function listParentAccounts() {
       a.phone,
       a.related_id,
       a.status,
+      a.must_change_password,
+      a.token_version,
       a.failed_login_count,
       a.login_locked
     FROM accounts a
@@ -74,6 +92,72 @@ async function findAccountByRoleAndUsername(role, username) {
     LEFT JOIN students st ON st.id = a.related_id AND a.role = 'parent'
     WHERE a.role = ? AND a.username = ?
   `, [role, username]);
+}
+
+async function findAccountById(id) {
+  return db.queryOne(`
+    SELECT
+      a.*,
+      CASE
+        WHEN a.role = 'teacher' THEN t.status
+        WHEN a.role = 'parent' THEN st.status
+        ELSE a.status
+      END AS profile_status
+    FROM accounts a
+    LEFT JOIN teachers t ON t.id = a.related_id AND a.role = 'teacher'
+    LEFT JOIN students st ON st.id = a.related_id AND a.role = 'parent'
+    WHERE a.id = ?
+  `, [id]);
+}
+
+async function findAuthState(role, id) {
+  if (role === "admin") {
+    return db.queryOne(
+      `
+        SELECT
+          id,
+          username,
+          status,
+          is_super,
+          login_locked,
+          must_change_password,
+          token_version,
+          NULL AS profile_status,
+          0 AS related_id
+        FROM admins
+        WHERE id = ?
+      `,
+      [id]
+    );
+  }
+
+  if (role === "teacher" || role === "parent") {
+    return db.queryOne(
+      `
+        SELECT
+          a.id,
+          a.username,
+          a.role,
+          a.status,
+          a.login_locked,
+          a.must_change_password,
+          a.token_version,
+          a.related_id,
+          CASE
+            WHEN a.role = 'teacher' THEN t.status
+            WHEN a.role = 'parent' THEN st.status
+            ELSE a.status
+          END AS profile_status
+        FROM accounts a
+        LEFT JOIN teachers t ON t.id = a.related_id AND a.role = 'teacher'
+        LEFT JOIN students st ON st.id = a.related_id AND a.role = 'parent'
+        WHERE a.id = ? AND a.role = ?
+      `,
+      [id, role]
+    );
+  }
+
+  return null;
 }
 
 async function usernameExists(username) {
@@ -147,12 +231,137 @@ async function resetAccountLoginFailures(id) {
   await db.execute("UPDATE accounts SET failed_login_count = 0, login_locked = 0 WHERE id = ?", [id]);
 }
 
+async function updateAdminProfile(id, data) {
+  await db.execute("UPDATE admins SET name = ? WHERE id = ?", [data.name, id]);
+}
+
+async function updateAccountProfile(account, data) {
+  await db.withTransaction(async (trx) => {
+    await trx.execute("UPDATE accounts SET name = ?, phone = ? WHERE id = ?", [data.name, data.phone, account.id]);
+
+    if (account.role === "teacher") {
+      await trx.execute("UPDATE teachers SET name = ?, phone = ? WHERE id = ?", [data.name, data.phone, account.related_id]);
+      return;
+    }
+
+    if (account.role === "parent") {
+      await trx.execute(
+        "UPDATE students SET name = ?, grade = ?, parent_name = ?, parent_phone = ? WHERE id = ?",
+        [data.student_name, data.student_grade, data.name, data.phone, account.related_id]
+      );
+    }
+  });
+}
+
+async function updateAdminPassword(id, passwordData) {
+  await db.execute("UPDATE admins SET password_hash = ?, password_salt = ? WHERE id = ?", [
+    passwordData.hash,
+    passwordData.salt,
+    id,
+  ]);
+}
+
+async function updateAccountPassword(id, passwordData) {
+  await db.execute("UPDATE accounts SET password_hash = ?, password_salt = ? WHERE id = ?", [
+    passwordData.hash,
+    passwordData.salt,
+    id,
+  ]);
+}
+
+async function updateLinkedPassword(record, role, passwordData) {
+  await db.withTransaction(async (trx) => {
+    const mustChangePassword = Number(passwordData.must_change_password || 0);
+    if (role === "admin") {
+      await trx.execute(
+        `
+          UPDATE admins
+          SET password_hash = ?,
+              password_salt = ?,
+              must_change_password = ?,
+              token_version = token_version + 1
+          WHERE id = ?
+        `,
+        [
+          passwordData.hash,
+          passwordData.salt,
+          mustChangePassword,
+          record.id,
+        ]
+      );
+      await trx.execute(
+        `
+          UPDATE accounts
+          SET password_hash = ?,
+              password_salt = ?,
+              must_change_password = ?,
+              token_version = token_version + 1
+          WHERE role = 'teacher' AND username = ?
+        `,
+        [
+          passwordData.hash,
+          passwordData.salt,
+          mustChangePassword,
+          record.username,
+        ]
+      );
+      return;
+    }
+
+    await trx.execute(
+      `
+        UPDATE accounts
+        SET password_hash = ?,
+            password_salt = ?,
+            must_change_password = ?,
+            token_version = token_version + 1
+        WHERE id = ?
+      `,
+      [
+        passwordData.hash,
+        passwordData.salt,
+        mustChangePassword,
+        record.id,
+      ]
+    );
+
+    if (role === "teacher") {
+      await trx.execute(
+        `
+          UPDATE admins
+          SET password_hash = ?,
+              password_salt = ?,
+              must_change_password = ?,
+              token_version = token_version + 1
+          WHERE username = ? AND is_super = 0
+        `,
+        [
+          passwordData.hash,
+          passwordData.salt,
+          mustChangePassword,
+          record.username,
+        ]
+      );
+    }
+  });
+}
+
 async function unlockAccount(role, id) {
   if (role === "admin") {
     await resetAdminLoginFailures(id);
     return;
   }
   await resetAccountLoginFailures(id);
+}
+
+async function invalidateSession(role, id) {
+  if (role === "admin") {
+    await db.execute("UPDATE admins SET token_version = token_version + 1 WHERE id = ?", [id]);
+    return;
+  }
+  if (role === "teacher" || role === "parent") {
+    await db.execute("UPDATE accounts SET token_version = token_version + 1 WHERE id = ? AND role = ?", [id, role]);
+  }
 }
 
 async function createTeacherProfile(data, trx) {
@@ -203,9 +412,12 @@ module.exports = {
   createParentStudentProfile,
   createTeacherProfile,
   deleteAdmin,
+  findAccountById,
   findAccountByRoleAndUsername,
+  findAuthState,
   findAdminById,
   findAdminByUsername,
+  invalidateSession,
   listAdmins,
   listParentAccounts,
   listTeacherAccounts,
@@ -214,6 +426,11 @@ module.exports = {
   recordAdminLoginFailure,
   resetAccountLoginFailures,
   resetAdminLoginFailures,
+  updateAccountPassword,
+  updateAccountProfile,
+  updateAdminPassword,
+  updateAdminProfile,
+  updateLinkedPassword,
   unlockAccount,
   usernameExists,
 };

@@ -1,8 +1,27 @@
 <template>
   <div class="permission-page">
-    <el-card shadow="never">
+    <div class="admin-module-hero">
+      <div>
+        <span>管理员端</span>
+        <h2>{{ moduleTitle }}</h2>
+        <p>{{ moduleDescription }}</p>
+      </div>
+      <div v-if="isReviewMode" class="admin-module-metrics">
+        <div>
+          <strong>{{ pendingTeacherCount }}</strong>
+          <small>未审核账号</small>
+        </div>
+        <div>
+          <strong>{{ unassignedSubjectCount }}</strong>
+          <small>未任命科目</small>
+        </div>
+      </div>
+    </div>
+
+    <template v-if="isReviewMode">
+    <el-card ref="subjectSection" shadow="never">
       <template #header>
-        <strong>老师审核</strong>
+        <strong>老师账号审核</strong>
       </template>
 
       <div class="audit-toolbar">
@@ -16,7 +35,13 @@
         <el-button @click="resetAuditSearch">重置</el-button>
       </div>
 
-      <el-table :data="pagedAuditTeacherAccounts" empty-text="暂无老师账号">
+      <el-table
+        ref="auditTableRef"
+        class="paginated-table"
+        :data="pagedAuditTeacherAccounts"
+        empty-text="暂无老师账号"
+        :style="{ '--table-visible-rows': permissionPageSize }"
+      >
         <el-table-column prop="username" label="账号" min-width="120" />
         <el-table-column prop="name" label="姓名" min-width="110" />
         <el-table-column prop="phone" label="手机号" min-width="130" />
@@ -33,7 +58,6 @@
               v-if="row.teacher_status !== '启用'"
               class="action-button"
               type="primary"
-              plain
               @click="setTeacherStatus(row, '启用')"
             >
               审核通过
@@ -107,7 +131,13 @@
         </el-col>
 
         <el-col :xs="24" :lg="14">
-          <el-table :data="pagedSubjectTeacherAccounts" empty-text="暂无老师账号">
+          <el-table
+            ref="subjectTableRef"
+            class="paginated-table"
+            :data="pagedSubjectTeacherAccounts"
+            empty-text="暂无老师账号"
+            :style="{ '--table-visible-rows': permissionPageSize }"
+          >
             <el-table-column prop="username" label="账号" min-width="120" />
             <el-table-column prop="name" label="姓名" min-width="110" />
             <el-table-column label="状态" width="140">
@@ -149,10 +179,14 @@
         </el-col>
       </el-row>
     </el-card>
+    </template>
 
-    <el-card v-if="isSuperAdmin" shadow="never">
+    <el-card v-if="isAuthorizationMode && isSuperAdmin" shadow="never">
       <template #header>
-        <strong>普通管理员任命</strong>
+        <div class="card-title-stack">
+          <span>授权管理</span>
+          <strong>管理员授权</strong>
+        </div>
       </template>
 
       <el-row :gutter="18">
@@ -176,7 +210,13 @@
         </el-col>
 
         <el-col :xs="24" :lg="14">
-          <el-table :data="pagedAdminRows" empty-text="暂无管理员">
+          <el-table
+            ref="adminTableRef"
+            class="paginated-table"
+            :data="pagedAdminRows"
+            empty-text="暂无管理员"
+            :style="{ '--table-visible-rows': permissionPageSize }"
+          >
             <el-table-column prop="username" label="账号" />
             <el-table-column prop="name" label="姓名" />
             <el-table-column label="权限" width="120">
@@ -234,28 +274,45 @@
         </el-col>
       </el-row>
     </el-card>
+
+    <el-card v-if="isAuthorizationMode && !isSuperAdmin" shadow="never">
+      <StateBlock
+        type="empty"
+        title="当前账号没有管理员授权权限"
+        description="普通管理员可以管理老师、学生、课程和审核流程，但不能任命或撤销管理员。"
+      />
+    </el-card>
   </div>
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from "vue";
+import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
+import { useRoute } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../../api/client";
 import { getAuth } from "../../auth/session";
+import StateBlock from "../../components/StateBlock.vue";
 
 const props = defineProps({
   state: {
     type: Object,
     required: true,
   },
+  mode: {
+    type: String,
+    default: "authorization",
+  },
 });
 
 const emit = defineEmits(["state-updated"]);
+const route = useRoute();
 const subjectOptions = ["语文", "数学", "英语", "物理", "化学"];
 const permissionPageSize = 5;
 const auth = getAuth();
 const currentUser = computed(() => auth?.user || {});
 const isSuperAdmin = computed(() => currentUser.value.username === "admin" || Number(currentUser.value.is_super || 0) === 1);
+const isReviewMode = computed(() => props.mode === "review");
+const isAuthorizationMode = computed(() => !isReviewMode.value);
 const operator = computed(() => ({
   role: "admin",
   username: currentUser.value.username,
@@ -264,6 +321,10 @@ const operator = computed(() => ({
 
 const adminForm = reactive({ username: "", name: "" });
 const subjectForm = reactive({ teacher_id: "", subjects: [] });
+const subjectSection = ref(null);
+const auditTableRef = ref(null);
+const subjectTableRef = ref(null);
+const adminTableRef = ref(null);
 const auditSearchDraft = ref("");
 const auditKeyword = ref("");
 const auditPage = ref(1);
@@ -311,6 +372,18 @@ const adminTotalPages = computed(() => getTotalPages(sortedAdminRows.value.lengt
 const approvedTeacherAccounts = computed(() =>
   teacherAccounts.value.filter((item) => item.teacher_status === "启用")
 );
+const pendingTeacherCount = computed(() =>
+  teacherAccounts.value.filter((item) => item.teacher_status === "待审核").length
+);
+const unassignedSubjectCount = computed(() =>
+  approvedTeacherAccounts.value.filter((item) => !String(item.subject || "").trim()).length
+);
+const moduleTitle = computed(() => (isReviewMode.value ? "账号审核" : "管理员授权"));
+const moduleDescription = computed(() =>
+  isReviewMode.value
+    ? "集中处理老师账号审核与教学科目任命，确保老师通过审核后再参与排课。"
+    : "由超级管理员任命或撤销普通管理员，控制后台管理权限边界。"
+);
 const appointableTeacherAccounts = computed(() =>
   approvedTeacherAccounts.value.filter((item) => Number(item.is_admin || 0) !== 1)
 );
@@ -330,6 +403,34 @@ watch([auditTotalPages, subjectTotalPages, adminTotalPages], () => {
   normalizePage("subject");
   normalizePage("admin");
 });
+
+watch(
+  [isReviewMode, isAuthorizationMode, auditPage, subjectPage, adminPage, pagedAuditTeacherAccounts, pagedSubjectTeacherAccounts, pagedAdminRows],
+  refreshPermissionTableLayout,
+  { flush: "post" }
+);
+
+watch(
+  () => route.query.section,
+  () => {
+    scrollToTargetSection();
+  }
+);
+
+onMounted(scrollToTargetSection);
+
+async function scrollToTargetSection() {
+  if (!isReviewMode.value || route.query.section !== "subjects") return;
+  await nextTick();
+  subjectSection.value?.$el?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function refreshPermissionTableLayout() {
+  await nextTick();
+  auditTableRef.value?.doLayout?.();
+  subjectTableRef.value?.doLayout?.();
+  adminTableRef.value?.doLayout?.();
+}
 
 function applyAuditSearch() {
   auditKeyword.value = auditSearchDraft.value.trim();
@@ -528,6 +629,69 @@ async function revokeAdmin(row) {
   gap: 18px;
 }
 
+.admin-module-hero {
+  align-items: center;
+  background: linear-gradient(135deg, #ffffff 0%, #f2f7ff 100%);
+  border: 1px solid #dbe7f5;
+  border-radius: 14px;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  padding: 22px 24px;
+}
+
+.admin-module-hero span {
+  color: #246bfe;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.admin-module-hero h2 {
+  font-size: 24px;
+  margin: 8px 0;
+}
+
+.admin-module-hero p {
+  color: var(--muted);
+  margin: 0;
+}
+
+.admin-module-metrics {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(98px, 1fr));
+  min-width: 224px;
+}
+
+.admin-module-metrics div {
+  background: #ffffff;
+  border: 1px solid #dbe7f5;
+  border-radius: 10px;
+  display: grid;
+  gap: 5px;
+  justify-items: center;
+  padding: 12px;
+}
+
+.admin-module-metrics strong {
+  font-size: 24px;
+}
+
+.admin-module-metrics small {
+  color: var(--muted);
+}
+
+.card-title-stack {
+  display: grid;
+  gap: 4px;
+}
+
+.card-title-stack span {
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .full {
   width: 100%;
 }
@@ -572,5 +736,16 @@ async function revokeAdmin(row) {
 
 .action-button {
   min-width: 88px;
+}
+
+@media (max-width: 760px) {
+  .admin-module-hero {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-module-metrics {
+    min-width: 0;
+  }
 }
 </style>
