@@ -15,7 +15,15 @@ const mimeTypes = {
 };
 
 async function serveStatic(res, pathname) {
-  const requested = pathname === "/" ? "index.html" : pathname.slice(1);
+  let decodedPathname = pathname;
+  try {
+    decodedPathname = decodeURIComponent(pathname);
+  } catch {
+    res.writeHead(400);
+    return res.end("Bad request");
+  }
+
+  const requested = decodedPathname === "/" ? "index.html" : decodedPathname.slice(1);
   const filePath = normalize(join(STATIC_DIR, requested));
   if (!filePath.startsWith(STATIC_DIR)) {
     res.writeHead(403);
@@ -30,7 +38,7 @@ async function serveStatic(res, pathname) {
     });
     res.end(content);
   } catch {
-    if (!extname(pathname)) {
+    if (!extname(decodedPathname)) {
       const indexContent = await readFile(join(STATIC_DIR, "index.html"));
       res.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",

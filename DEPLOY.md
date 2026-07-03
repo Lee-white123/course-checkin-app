@@ -116,6 +116,90 @@ openssl rand -hex 32
 - `DB_PASSWORD` 是项目后端连接数据库使用的应用用户密码。
 - `AUTH_SECRET` 用于登录 Token 签名，应使用长随机字符串。
 
+### 修改初始化超级管理员账号和密码
+
+项目的默认超级管理员在 `mysql/schema.sql` 中初始化。全新环境部署前，如果需要修改默认超级管理员账号、名称或密码，请在首次启动 Docker 前修改该文件中的 `INSERT INTO admins(...) VALUES (...)` 片段。
+
+默认片段类似：
+
+```sql
+VALUES (
+  'admin',
+  '系统管理员',
+  'password_hash',
+  'password_salt',
+  1,
+  '启用',
+  0,
+  0,
+  0,
+  1,
+  NOW()
+)
+```
+
+其中：
+- 第 1 个值是登录账号，例如 `admin`。
+- 第 2 个值是管理员显示名称，例如 `系统管理员`。
+- 第 3 个值是 `password_hash`，不是明文密码。
+- 第 4 个值是 `password_salt`，不是明文密码。
+- `is_super = 1` 表示超级管理员。
+- `must_change_password = 0` 表示首次登录不强制修改密码。
+
+密码不能直接写明文，需要先生成 hash 和 salt。推荐在项目根目录执行：
+
+```bash
+cd /opt/apps/course-checkin-app
+node -e "const crypto = require('crypto'); const password = '这里写你的新密码'; const salt = crypto.randomBytes(16).toString('hex'); const hash = crypto.pbkdf2Sync(password, salt, 120000, 32, 'sha256').toString('hex'); console.log({ hash, salt });"
+```
+
+如果服务器宿主机 Node.js 版本较新，也可以使用项目内置函数：
+
+```bash
+cd /opt/apps/course-checkin-app
+node -e "const { hashPassword } = require('./src/utils/password'); const r = hashPassword('这里写你的新密码'); console.log(r);"
+```
+
+如果看到 `Cannot find module 'node:crypto'`，说明宿主机 Node.js 版本较旧，请使用上一条 `crypto` 兼容命令，或升级宿主机 Node.js 到 18+。
+
+生成后，将输出中的：
+
+```text
+hash -> 填入 password_hash
+salt -> 填入 password_salt
+```
+
+例如要改成：
+
+```text
+账号：superadmin
+名称：超级管理员
+密码：自行设置的新密码
+```
+
+则将 `mysql/schema.sql` 中对应值改成：
+
+```sql
+VALUES (
+  'superadmin',
+  '超级管理员',
+  '生成出来的 hash',
+  '生成出来的 salt',
+  1,
+  '启用',
+  0,
+  0,
+  0,
+  1,
+  NOW()
+)
+```
+
+注意：
+- 这个初始化只会在 MySQL 数据卷第一次创建时执行。
+- 如果已经执行过 `docker compose up` 并生成了 `mysql_data`，后续再改 `mysql/schema.sql` 不会自动修改现有管理员密码。
+- 生产环境不要继续使用公开文档中的默认账号和默认密码。
+
 ## 6. 检查 MySQL 镜像版本
 
 确认 `docker-compose.yml` 中 MySQL 镜像固定为 8.0：
@@ -131,6 +215,87 @@ image: mysql
 ```
 
 否则 Docker 可能拉取 MySQL 9.x，导致旧的 MySQL 8.0 数据目录无法启动。
+
+### Docker 镜像下载失败或速度很慢
+
+如果执行 `docker compose --env-file .env up -d --build` 时，出现镜像下载超时、连接失败、`TLS handshake timeout`、`i/o timeout` 等问题，可以临时配置 Docker 国内镜像源。
+
+先备份当前 Docker 配置：
+
+```bash
+sudo mkdir -p /etc/docker
+sudo cp /etc/docker/daemon.json /etc/docker/daemon.json.bak.$(date +%F-%H%M%S) 2>/dev/null || true
+```
+
+方式一：使用清华源：
+
+```bash
+sudo tee /etc/docker/daemon.json > /dev/null <<'EOF'
+{
+  "registry-mirrors": [
+    "https://docker.mirrors.tuna.tsinghua.edu.cn"
+  ]
+}
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+docker info | grep -A 5 "Registry Mirrors"
+```
+
+方式二：使用阿里云镜像加速器：
+
+阿里云通常需要使用自己账号下的专属加速地址，格式类似：
+
+```text
+https://xxxxxxxx.mirror.aliyuncs.com
+```
+
+替换命令中的地址后执行：
+
+```bash
+sudo tee /etc/docker/daemon.json > /dev/null <<'EOF'
+{
+  "registry-mirrors": [
+    "https://你的阿里云镜像加速地址.mirror.aliyuncs.com"
+  ]
+}
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+docker info | grep -A 5 "Registry Mirrors"
+```
+
+配置后重新拉取或构建：
+
+```bash
+docker compose --env-file .env pull
+docker compose --env-file .env up -d --build
+```
+
+如果镜像源不可用、构建仍然失败，或后续想恢复 Docker 默认配置，可以还原：
+
+```bash
+sudo rm -f /etc/docker/daemon.json
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+docker info | grep -A 5 "Registry Mirrors"
+```
+
+如果之前有备份，也可以恢复最近的备份文件：
+
+```bash
+ls -t /etc/docker/daemon.json.bak.*
+sudo cp /etc/docker/daemon.json.bak.最近的备份文件 /etc/docker/daemon.json
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+```
+
+注意：
+- 修改 `/etc/docker/daemon.json` 会重启 Docker 服务，正在运行的容器可能会短暂中断。
+- 不同云厂商和地区的镜像源可用性会变化，如果一个源不可用，换另一个源再试。
+- 镜像源只影响 Docker 拉取镜像，不会修改项目代码和数据库数据。
 
 ## 7. 启动服务
 
@@ -397,4 +562,3 @@ WHERE a.role = 'teacher'
 ```
 
 其中 `2` 和 `3` 需要根据 `subjects` 表中的实际 `id` 确认。
-
