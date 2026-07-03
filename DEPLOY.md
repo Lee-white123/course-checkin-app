@@ -506,6 +506,12 @@ docker compose --env-file .env up -d --build
 
 ### 页面中文乱码
 
+MySQL 8.0 支持中文。页面出现 `ç³»ç»...`、`鍚敤`、空白名称等异常时，通常不是 MySQL 版本不支持中文，而是以下几类原因：
+
+- 初始化 SQL 文件中的中文在提交或上传前已经被错误编码。
+- 首次初始化数据库时，坏掉的中文被写进了 MySQL 数据卷。
+- 进入 MySQL 命令行时没有指定 `utf8mb4`，导致手动输入或查看中文异常。
+
 进入 MySQL 时使用：
 
 ```bash
@@ -519,7 +525,125 @@ SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
 SET CHARACTER SET utf8mb4;
 ```
 
-如果历史数据已经写成 `???`，需要用 `UPDATE` 手动修复。
+检查数据库里的数据是否已经写坏：
+
+```sql
+SELECT id, username, name, HEX(name), status, HEX(status)
+FROM admins;
+
+SELECT id, role, username, name, HEX(name), status, HEX(status)
+FROM accounts
+WHERE username = 'admin';
+```
+
+判断方式：
+
+- 如果 MySQL 查询结果里 `name`、`status` 已经是乱码或空值，说明数据写入时已经坏了，需要 `UPDATE` 修复。
+- 如果 MySQL 查询结果正常中文，但页面乱码，再检查后端响应、浏览器缓存和前端构建。
+- 如果新注册的中文账号正常，只有默认 `admin` 乱码，通常是 `mysql/schema.sql` 中初始化超级管理员数据曾经乱码。
+
+修复默认超级管理员：
+
+```sql
+UPDATE admins
+SET name = '系统管理员',
+    status = '启用'
+WHERE username = 'admin';
+```
+
+如果 MySQL 命令行里无法输入中文，可以使用 UTF-8 十六进制写入：
+
+```sql
+UPDATE admins
+SET name = CONVERT(UNHEX('E7B3BBE7BB9FE7AEA1E79086E59198') USING utf8mb4),
+    status = CONVERT(UNHEX('E590AFE794A8') USING utf8mb4)
+WHERE username = 'admin';
+```
+
+如果 `accounts` 表中也存在 `admin` 账号，同步修复：
+
+```sql
+UPDATE accounts
+SET name = CONVERT(UNHEX('E7B3BBE7BB9FE7AEA1E79086E59198') USING utf8mb4),
+    status = CONVERT(UNHEX('E590AFE794A8') USING utf8mb4)
+WHERE username = 'admin';
+```
+
+其中：
+
+```text
+E7B3BBE7BB9FE7AEA1E79086E59198 = 系统管理员
+E590AFE794A8 = 启用
+```
+
+修复后退出 MySQL，重启后端并重新登录：
+
+```sql
+exit;
+```
+
+```bash
+docker compose --env-file .env restart backend
+```
+
+同时检查服务器上的初始化文件，避免下一台新服务器首次部署时继续写入乱码：
+
+```bash
+grep -n "admin\|系统管理员\|启用\|鍚\|ç" mysql/schema.sql
+```
+
+`mysql/schema.sql` 中默认管理员片段应包含正常中文：
+
+```sql
+'admin',
+'系统管理员',
+...
+'启用',
+```
+
+新服务器部署前后建议按下面步骤测试：
+
+1. 部署前确认初始化文件是正常 UTF-8 中文。
+
+```bash
+grep -n "系统管理员\|启用\|鍚\|ç" mysql/schema.sql
+```
+
+正常结果应该能看到 `系统管理员`、`启用`，不应该看到 `鍚`、`ç` 这类乱码。
+
+2. 确认是全新的 MySQL 数据卷首次初始化。
+
+```bash
+docker volume ls
+```
+
+如果这台服务器之前已经启动过项目并生成过 `mysql_data`，即使换了最新的 `mysql/schema.sql`，MySQL 也不会重新执行初始化脚本，需要用 `UPDATE` 修复旧数据。
+
+3. 首次启动完成后进入 MySQL 验证默认管理员。
+
+```bash
+docker compose --env-file .env exec mysql mysql --default-character-set=utf8mb4 -u root -p course_checkin
+```
+
+```sql
+SELECT id, username, name, HEX(name), status, HEX(status)
+FROM admins
+WHERE username = 'admin';
+```
+
+正常结果应包含：
+
+```text
+admin | 系统管理员 | E7B3BBE7BB9FE7AEA1E79086E59198 | 启用 | E590AFE794A8
+```
+
+4. 浏览器登录 `admin`，确认页面右上角和侧边栏账号名称显示为正常中文。
+
+只要满足“新服务器 + 最新正常 UTF-8 的 `mysql/schema.sql` + 首次创建数据库卷”，默认管理员初始化中文就不会再出现这次的乱码问题。
+
+不要只修改 `mysql/schema.sql` 后就期待线上已有数据自动恢复。`mysql/schema.sql` 只会在 MySQL 数据卷第一次创建时执行一次，已有数据必须通过 `UPDATE` 修复。生产环境不要为了修中文乱码直接执行 `docker compose down -v`，除非已经确认可以删除整个 MySQL 数据卷。
+
+如果历史数据已经写成 `???`，原始中文通常已经不可逆，需要根据业务含义用 `UPDATE` 手动修复。
 
 ### 老师科目保存成功但页面仍显示未任命
 
