@@ -3626,3 +3626,154 @@ html[data-theme="dark"] .admin-todo-card.is-amber {
   height: 44px;
   min-height: 44px;
 }
+
+/* Mobile sync pass: keep admin desktop-like, polish login/teacher/parent on phones. */
+@media (max-width: 760px) {
+  html,
+  body,
+  #app {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .app-shell:not(.role-admin),
+  .app-shell:not(.role-admin).is-sidebar-collapsed {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .app-shell:not(.role-admin) .app-workspace {
+    min-width: 0;
+    overflow-x: hidden;
+    width: 100%;
+  }
+
+  .app-shell:not(.role-admin) .app-header {
+    box-sizing: border-box;
+    min-height: 70px;
+    padding: 14px;
+    width: 100%;
+  }
+
+  .app-shell:not(.role-admin) .header-actions {
+    min-width: 0;
+  }
+
+  .app-shell:not(.role-admin) .theme-cycle-button {
+    flex: 0 0 42px;
+    height: 42px;
+    width: 42px;
+  }
+
+  .app-shell:not(.role-admin) .user-dropdown-trigger {
+    flex: 1 1 auto;
+    max-width: min(178px, 48vw);
+    min-width: 0;
+  }
+
+  .app-shell:not(.role-admin) .page-body {
+    box-sizing: border-box;
+    overflow-x: hidden;
+    padding: 14px 12px calc(86px + env(safe-area-inset-bottom));
+    width: 100%;
+  }
+
+  .login-page {
+    align-items: start;
+    display: block;
+    min-height: 100svh;
+    padding: 86px 14px 26px;
+  }
+
+  .login-page::before,
+  .login-page::after {
+    inset: 0;
+  }
+
+  .login-corner-brand {
+    left: 50%;
+    max-width: 236px;
+    top: 12px;
+    transform: translateX(-50%);
+    width: calc(100% - 64px);
+  }
+
+  .login-panel {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: minmax(0, 1fr);
+    min-height: auto;
+    width: 100%;
+  }
+
+  .login-brand {
+    box-sizing: border-box;
+    padding: 0;
+    text-align: center;
+    width: 100%;
+  }
+
+  .login-brand h1 {
+    font-size: 24px;
+    line-height: 1.25;
+  }
+
+  .auth-note {
+    margin-top: 18px;
+    max-width: none;
+    padding: 12px 14px;
+    text-align: left;
+  }
+
+  .login-card {
+    background: rgba(255, 255, 255, 0.82);
+    border: 1px solid rgba(39, 78, 132, 0.12);
+    border-radius: 16px;
+    box-shadow: 0 14px 34px rgba(20, 42, 75, 0.08);
+    box-sizing: border-box;
+    max-width: none;
+    padding: 18px;
+    width: 100%;
+  }
+
+  .auth-card-head strong {
+    font-size: 26px;
+  }
+
+  .login-actions {
+    gap: 8px;
+  }
+}
+
+@media (max-width: 520px) {
+  .app-shell:not(.role-admin) .topbar-title {
+    min-width: 0;
+  }
+
+  .app-shell:not(.role-admin) .topbar-title strong {
+    display: block;
+    max-width: 42vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .app-shell:not(.role-admin) .user-avatar {
+    flex: 0 0 32px;
+    height: 32px;
+    width: 32px;
+  }
+
+  .app-shell:not(.role-admin) .user-dropdown-trigger > span:not(.user-avatar) {
+    max-width: 78px;
+  }
+
+  .login-page {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .login-brand h1 {
+    font-size: 22px;
+  }
+}
