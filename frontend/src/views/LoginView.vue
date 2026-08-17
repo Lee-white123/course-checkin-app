@@ -6,7 +6,7 @@
 
     <section class="login-panel">
       <div class="login-brand">
-        <h1>学府助学课时管理平台</h1>
+        <h1>学府助学</h1>
         <div class="auth-note">
           <strong>{{ roleNote.title }}</strong>
           <span>{{ roleNote.text }}</span>

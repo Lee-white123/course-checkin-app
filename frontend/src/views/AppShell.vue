@@ -6,7 +6,6 @@
           <img :src="xuefuMark" alt="学府助学" />
         </div>
         <div class="brand-copy">
-          <span>课程消课管理系统</span>
           <strong>学府助学</strong>
         </div>
       </div>
@@ -265,7 +264,7 @@ const sidebarRoleName = computed(() => {
   if (currentRole.value === "parent") return "家长";
   return currentUser.value?.username === "admin" || Number(currentUser.value?.is_super || 0) === 1 ? "校区管理员" : "管理员";
 });
-const pageTitle = computed(() => menuItems.value.find((item) => item.name === activeMenu.value)?.label || "课时消除管理系统");
+const pageTitle = computed(() => menuItems.value.find((item) => item.name === activeMenu.value)?.label || "学府助学");
 const abnormalScheduleCount = computed(() => (state.schedules || []).filter((item) => item.status === "异常").length);
 const accountReviewCount = computed(
   () =>
